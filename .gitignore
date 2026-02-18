@@ -1,0 +1,8 @@
+address_book_backend/*
+!address_book_backend/*.c
+!address_book_backend/*.h
+!address_book_backend/makefile
+
+address_book_web/.vscode
+address_book_web/node_modules
+
