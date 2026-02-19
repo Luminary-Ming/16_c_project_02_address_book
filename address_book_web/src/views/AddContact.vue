@@ -51,11 +51,9 @@ function triggerFileInput() {
 async function saveContact() {
     const payload = {
         name: contact.name,
-        phone: contact.telephone,
         telephone: contact.telephone,
         email: contact.email || '',
         image: contact.image,
-        initial: contact.name ? contact.name[0].toUpperCase() : '#'
     };
 
     let created = null;
@@ -72,15 +70,14 @@ async function saveContact() {
         list.push({
             id: created.id,
             name: created.name || payload.name,
-            telephone: created.phone || created.telephone || payload.telephone,
+            telephone: created.telephone || payload.telephone,
             email: created.email || payload.email,
             image: created.image || payload.image,
-            initial: created.initial || payload.initial
         });
     } else {
         const maxId = list.reduce((m, c) => Math.max(m, c.id || 0), 0);
         const id = maxId + 1;
-        list.push({ id, name: payload.name, telephone: payload.telephone, email: payload.email, image: payload.image, initial: payload.initial });
+        list.push({ id, name: payload.name, telephone: payload.telephone, email: payload.email, image: payload.image });
     }
 
     localStorage.setItem('contacts', JSON.stringify(list));

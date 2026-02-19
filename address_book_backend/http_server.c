@@ -87,7 +87,8 @@ static int collect_post_data(struct MHD_Connection *connection, const char *uplo
 	if (*con_cls == NULL)  // 初始化"储物柜", 只在请求刚开始时执行一次
 	{
 		// 为这个请求申请一个专属的上下文结构体，用来跨多次回调保存数据
-		RequestContext *req_context = malloc(sizeof(RequestContext));
+		// 使用 calloc 开辟, 它会自动清零
+		RequestContext *req_context = calloc(1, sizeof(RequestContext));
 		if (!req_context)
 		{
 			LOG_ERR("malloc failed");
@@ -273,7 +274,7 @@ static int handle_save_contact(struct MHD_Connection *connection, RequestContext
 	return ret;
 }
 
-// 处理 Base64 编码的图片上传
+// 处理 Base64 编码的图片上传 (解析 json、解码 Base64、保存文件)
 static int handle_upload_base64_image(struct MHD_Connection *connection, RequestContext *req_context)
 {
 	if (!req_context || !req_context->post_data)
@@ -308,8 +309,6 @@ static int handle_upload_base64_image(struct MHD_Connection *connection, Request
 			filename = my_strndup(f_ptr, len);  // 申请内存并拷贝文件名
 		}
 	}
-
-	LOG_ERR("filename = %s", filename);
 
 	// --- B.解析 Base64 data ---
 	char *d_ptr = strstr(req_context->post_data, "\"data\":\"");
@@ -433,66 +432,64 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *connecti
 	if (strcmp(method, "OPTIONS") == 0)
 		return handle_options(connection);
 
-	// 请求上传文件接口
-	if(strcmp(url, "/api/contacts/upload") == 0 && strcmp(method, "POST") == 0)
+	// 如果是 POST/PUT，统一先处理数据收集
+	if (strcmp(method, "POST") == 0 || strcmp(method, "PUT") == 0)
 	{
-		// 检查 Content-Type (防御性检查)
-		// 确保客户端发送的是你期望的格式（JSON）。如果对方发的是一个巨大的二进制文件或恶意脚本，你可以直接拒绝，节省服务器解析成本。
-		//const char *content_type = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Content-Type");
-		//// 检查 content_type 是否存在, 再检查里面是否包含 "application/json"
-		//if (!content_type || !strstr(content_type, "application/json"))
-		//{
-		//	char *resp_json = json_response_no_data(CONTENT_TYPE_ERROR, "仅支持 application/json 格式");
-		//	int ret = send_json_response(connection, MHD_HTTP_UNSUPPORTED_MEDIA_TYPE, resp_json);
-		//	free(resp_json);
-		//	return ret;
-		//}
-
-		LOG_ERR("upload_data_size = %d", (int)*upload_data_size);
-		LOG_ERR("upload_data = %s", upload_data); 
-
-		int ret = collect_post_data(connection, upload_data, upload_data_size, con_cls);
-		if (ret == MHD_YES && *upload_data_size == 0 && *con_cls != NULL)
+		// 第一次进入: 前置检查 Header
+		if (*con_cls == NULL)
 		{
-			// 此时 req_context->post_data 里存的是完整的 json 字符串（包含 Base64 图片）
-			//LOG_INFO("接收到完整 json: %s", ((RequestContext *)*con_cls)->post_data);
-
-			// 处理 Base64 编码的图片上传, 解析 json、解码 Base64、保存文件
-			return handle_upload_base64_image(connection, (RequestContext *)*con_cls);
+			// 检查 Content-Type (防御性检查)
+			// 确保客户端发送的是你期望的格式（JSON）。如果对方发的是一个巨大的二进制文件或恶意脚本，你可以直接拒绝，节省服务器解析成本。
+			const char *content_type = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Content-Type");
+			// 检查 content_type 是否存在, 再检查里面是否包含 "application/json"
+			if (!content_type || !strstr(content_type, "application/json"))
+			{
+				char *resp_json = json_response_no_data(CONTENT_TYPE_ERROR, "仅支持 application/json 格式");
+				int ret = send_json_response(connection, MHD_HTTP_UNSUPPORTED_MEDIA_TYPE, resp_json);
+				free(resp_json);
+				return ret;
+			}
+			// 初始化储物柜
+			return collect_post_data(connection, upload_data, upload_data_size, con_cls);
 		}
-		return ret;
+
+		// 数据搬运阶段: 只要还有数据块进来，就继续存
+		if (*upload_data_size > 0)
+			return collect_post_data(connection, upload_data, upload_data_size, con_cls);
+		
+		// 数据接收完毕阶段 (*upload_data_size == 0)
+		RequestContext *req_context = (RequestContext *)*con_cls;
+		if (!req_context || !req_context->post_data)
+		{
+			char *resp_json = json_response_no_data(UP_DATA_IS_NULL, "未接收到数据");
+			int ret = send_json_response(connection, MHD_HTTP_BAD_REQUEST, resp_json);
+			free(resp_json);
+			return ret;
+		}
+
+		// 请求上传文件接口 (POST 和 PUT 都支持)
+		if (strcmp(url, "/api/contacts/upload") == 0)
+			return handle_upload_base64_image(connection, (RequestContext *)*con_cls);
+
+		// 联系人接口 (POST 和 PUT)
+		if (strcmp(url, "/api/contacts") == 0)
+			return handle_save_contact(connection, (RequestContext *)*con_cls, strcmp(method, "PUT") == 0);
 	}
-	// 请求联系人接口
+
+	// 联系人接口 GET 和 DELETE
 	if (strncmp(url, "/api/contacts", 13) == 0)
 	{
 		if (strcmp(method, "GET") == 0)
 		{
-			if (strlen(url) == 13)  // 如果正好是 13 位，说明 URL 是 "/api/contacts"
-			{
+			if (url[13] == '\0')  // URL 是 "/api/contacts"
 				return handle_get_all_contacts(connection);
-			}
 
-			if (url[13] == '/')  // 如果长度大于 13，且第 13 位是 '/'，说明是 "/api/contacts/{id}"
-			{
+			if (url[13] == '/')   // URL 是 "/api/contacts/{id}"
 				return handle_get_contact(connection, url);
-			}
 		}
 			
-
 		if (strcmp(method, "DELETE") == 0)
 			return handle_delete_contact(connection, url);
-		
-		if (strcmp(method, "POST") == 0 || strcmp(method, "PUT") == 0)
-		{
-			int ret = collect_post_data(connection, upload_data, upload_data_size, con_cls);
-			if (ret == MHD_YES && *upload_data_size == 0 && *con_cls != NULL)
-			{
-				// 此时 req_context->post_data 里存的是完整的 json 字符串
-				LOG_INFO("接收到完整 json: %s", ((RequestContext *)*con_cls)->post_data);
-				return handle_save_contact(connection, (RequestContext *)*con_cls, strcmp(method, "PUT") == 0);
-			}
-			return ret;
-		}
 	}
 
 	// 未找到路由

@@ -200,8 +200,12 @@ int db_update_contact(LLIST *handler, Contact *contact)
 	// mysql_affected_rows() 返回实际被修改的行数
 	if (mysql_affected_rows(db_conn) == 0)
 	{
-		LOG_ERR("未找到联系人，id: %d\n", contact->id);
-		return DB_ERR_NOT_FOUND;
+		// 并且链表中没有此联系人 (如果修改的行数是 0, 但库中确实有此联系人说明是没有更新数据就点击了提交)
+		if (llist_find(handler, contact->id) == NULL)
+		{
+			LOG_ERR("未找到联系人，id: %d\n", contact->id);
+			return DB_ERR_NOT_FOUND;
+		}
 	}
 
 	llist_update(handler, contact);  // 更新链表（保持数据库表和链表数据一致）

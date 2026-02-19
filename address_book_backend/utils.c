@@ -49,16 +49,7 @@ char *contact_to_json(Contact *contact)
 char *contacts_to_json(Contact **contacts, int count)
 {
 	if (!contacts || count <= 0)
-	{
-		char *empty = malloc(3);  // "[]" + '\0' = 3字节
-		if (!empty)
-		{
-			LOG_ERR("malloc failed");
-			return NULL;
-		}
-		strcpy(empty, "[]");  // 复制包括尾零
-		return empty;
-	}
+		return my_strndup("[]", 2);
 
 	// 分配指针数组，用于存储每个联系人的 json 字符串指针
 	char **contacts_json = malloc(count * sizeof(char *));
@@ -68,13 +59,13 @@ char *contacts_to_json(Contact **contacts, int count)
 		return NULL;
 	}
 
-	size_t total_size = 3;  // 计算所需空间大小, 初始为3 ("[]" + '\0')
+	size_t total_size = 2;  // 计算所需空间大小, 初始为2 ("[]")
 	for (int i = 0; i < count; i++)  // 遍历所有联系人，计算生成 json 字符串的总大小
 	{
 		contacts_json[i] = contact_to_json(contacts[i]);  // 将单个联系人转换为 json 字符串
 		if (!contacts_json[i])
 		{
-			LOG_ERR("第 %d 个联系人转换为 json 字符串失败", i);
+			LOG_ERR("id = %d 的联系人转换为 json 字符串失败", contacts[i]->id);
 			for (int j = 0; j < i; j++)
 				free(contacts_json[j]);  // 释放已经转换成功的 json
 			free(contacts_json);  // 释放指针数组
@@ -82,7 +73,7 @@ char *contacts_to_json(Contact **contacts, int count)
 		}
 
 		total_size += strlen(contacts_json[i]);  // 累加当前联系人的 json 字符串长度
-		if (i != count - 1)  // 如果不是最后一个，需要加逗号分隔符
+		if (i != count - 1)  // 如果不是最后一个，加逗号分隔符
 			total_size += 1;
 	}
 
@@ -98,17 +89,21 @@ char *contacts_to_json(Contact **contacts, int count)
 	}
 
 	// 构建 json 数组
-	strcpy(json, "[");
+	char *ptr = json;
+	*ptr++ = '[';
 	for (int i = 0; i < count; i++)
 	{
-		strcat(json, contacts_json[i]);  // 追加当前联系人的 json
+		size_t len = strlen(contacts_json[i]);
+		memcpy(ptr, contacts_json[i], len);  // 拷贝当前联系人的 json
+		ptr += len;
 
 		if (i != count - 1)  // 如果不是最后一个，需要加逗号
-			strcat(json, ",");
+			*ptr++ = ',';
 
 		free(contacts_json[i]);  // 释放单个联系人的 json
 	}
-	strcat(json, "]");  // 追加完成后自动添加新的尾零
+	*ptr++ = ']';
+	*ptr = '\0';
 
 	free(contacts_json);  // 释放指针数组
 	return json;
@@ -120,8 +115,7 @@ char *json_response_no_data(const int code, const char *message)
 	if (!message) message = "";
 
 	// 计算所需空间
-	int needed = snprintf(NULL, 0,
-						  "{\"code\":%d,\"message\":\"%s\"}",
+	int needed = snprintf(NULL, 0, "{\"code\":%d,\"message\":\"%s\"}",
 						  code, message);
 	if (needed < 0)
 	{
@@ -137,8 +131,7 @@ char *json_response_no_data(const int code, const char *message)
 		return NULL;
 	}
 
-	sprintf(json,
-			"{\"code\":%d,\"message\":\"%s\"}",
+	sprintf(json, "{\"code\":%d,\"message\":\"%s\"}",
 			code, message);
 
 	return json;
@@ -151,8 +144,7 @@ char *json_response_data(const int code, const char *message, const char *data)
 	if (!data) data = "";
 
 	// 计算所需空间
-	int needed = snprintf(NULL, 0,
-						  "{\"code\":%d,\"message\":\"%s\",\"data\":%s}",
+	int needed = snprintf(NULL, 0, "{\"code\":%d,\"message\":\"%s\",\"data\":%s}",
 						  code, message, data);
 	if (needed < 0)
 	{
@@ -168,8 +160,7 @@ char *json_response_data(const int code, const char *message, const char *data)
 		return NULL;
 	}
 
-	sprintf(json,
-			"{\"code\":%d,\"message\":\"%s\",\"data\":%s}",
+	sprintf(json, "{\"code\":%d,\"message\":\"%s\",\"data\":%s}",
 			code, message, data);
 
 	return json;
@@ -368,49 +359,49 @@ char *handle_filename(const char *object_name)
 // 解析 POST/PUT 请求中的 json 数据
 Contact *parse_contact_from_json(const char *json_str)
 {
-	Contact *contact = malloc(sizeof(Contact));
+	Contact *contact = calloc(1, sizeof(Contact));
 	if (!contact)
 		return NULL;
-	memset(contact, 0, sizeof(Contact));
 
-	LOG_ERR("json_str = %s", json_str);
 	char *id_str = strstr(json_str, "\"id\":");
-	LOG_ERR("id_str = %s", id_str);
 	if (id_str)
-		contact->id = atoi(id_str + 5);
+		contact->id = atoi(id_str + strlen("\"id\":"));
 
-	char *name_str = strstr(json_str, "\"name\":\"");
-	LOG_ERR("name_str = %s", name_str);
-	if (id_str)
+	char *name_str = strstr(json_str, "\"name\":");
+	if (name_str)
 	{
-		name_str += 8;
+		name_str += strlen("\"name\":");
+		name_str++;
 		char *name_end = strchr(name_str, '"');
 		if (name_end)
 			strncpy(contact->name, name_str, name_end - name_str);
 	}
 
-	char *telephone_str = strstr(json_str, "\"telephone\":\"");
-	if (id_str)
+	char *telephone_str = strstr(json_str, "\"telephone\":");
+	if (telephone_str)
 	{
-		telephone_str += 8;
+		telephone_str += strlen("\"telephone\":");
+		telephone_str++;
 		char *telephone_end = strchr(telephone_str, '"');
 		if (telephone_end)
-			strncpy(contact->name, telephone_str, telephone_end - telephone_str);
+			strncpy(contact->telephone, telephone_str, telephone_end - telephone_str);
 	}
 
-	char *email_str = strstr(json_str, "\"email\":\"");
-	if (id_str)
+	char *email_str = strstr(json_str, "\"email\":");
+	if (email_str)
 	{
-		email_str += 8;
+		email_str += strlen("\"email\":");
+		email_str++;
 		char *email_end = strchr(email_str, '"');
 		if (email_end)
-			strncpy(contact->name, email_str, email_end - email_str);
+			strncpy(contact->email, email_str, email_end - email_str);
 	}
 
-	char *image_str = strstr(json_str, "\"image\":\"");
+	char *image_str = strstr(json_str, "\"image\":");
 	if (image_str)
 	{
-		image_str += 9;
+		image_str += strlen("\"image\":");
+		image_str++;
 		char *image_end = strchr(image_str, '"');
 		if (image_end) strncpy(contact->image, image_str, image_end - image_str);
 	}

@@ -63,7 +63,7 @@ async function loadContact() {
     if (found) {
         contact.id = found.id;
         contact.name = found.name || '';
-        contact.telephone = found.phone || found.telephone || '';
+        contact.telephone = found.telephone || '';
         contact.email = found.email || '';
         contact.image = found.image || '';
         return;
@@ -74,11 +74,9 @@ async function saveContact() {
     const payload = {
         id: contact.id,
         name: contact.name,
-        phone: contact.telephone,
         telephone: contact.telephone,
         email: contact.email || '',
-        image: contact.image,
-        initial: contact.name ? contact.name[0].toUpperCase() : '#'
+        image: contact.image
     };
 
     const res = await contactApi.updateContact(payload);
@@ -86,10 +84,10 @@ async function saveContact() {
     const list = raw ? JSON.parse(raw) : [];
     const idx = list.findIndex(c => Number(c.id) === Number(payload.id));
     if (idx >= 0) {
-        list[idx] = { ...list[idx], name: payload.name, telephone: payload.telephone, email: payload.email, image: payload.image, initial: payload.initial };
+        list[idx] = { ...list[idx], name: payload.name, telephone: payload.telephone, email: payload.email, image: payload.image };
     } else {
         const id = payload.id || Date.now();
-        list.push({ id, name: payload.name, telephone: payload.telephone, email: payload.email, image: payload.image, initial: payload.initial });
+        list.push({ id, name: payload.name, telephone: payload.telephone, email: payload.email, image: payload.image });
     }
     localStorage.setItem('contacts', JSON.stringify(list));
     ElMessage.success('更新成功!');
@@ -161,8 +159,7 @@ async function updateContactWithNewImage(imageUrl) {
             name: contact.name || '',
             telephone: contact.telephone || '',
             email: contact.email || '',
-            image: imageUrl,
-            initial: contact.name ? contact.name[0].toUpperCase() : '#'
+            image: imageUrl
         };
 
         console.log('更新联系人数据:', updateData); // 调试
@@ -190,7 +187,7 @@ async function updateContactWithNewImage(imageUrl) {
 
             // 可选：更新当前页面数据
             contact.name = updatedContact.name || contact.name;
-            contact.telephone = updatedContact.telephone || updatedContact.phone || contact.telephone;
+            contact.telephone = updatedContact.telephone || contact.telephone;
             contact.email = updatedContact.email || contact.email;
             contact.image = updatedContact.image || imageUrl;
 
@@ -231,20 +228,18 @@ function updateLocalStorage(contactData) {
             list[idx] = {
                 ...list[idx],
                 name: contactData.name || list[idx].name,
-                telephone: contactData.telephone || contactData.phone || list[idx].telephone,
+                telephone: contactData.telephone || list[idx].telephone,
                 email: contactData.email || list[idx].email,
-                image: contactData.image || list[idx].image,
-                initial: contactData.initial || (contactData.name ? contactData.name[0].toUpperCase() : list[idx].initial)
+                image: contactData.image || list[idx].image
             };
         } else {
             // 添加新联系人
             list.push({
                 id: contactData.id,
                 name: contactData.name || '',
-                telephone: contactData.telephone || contactData.phone || '',
+                telephone: contactData.telephone || '',
                 email: contactData.email || '',
-                image: contactData.image || '',
-                initial: contactData.initial || (contactData.name ? contactData.name[0].toUpperCase() : '#')
+                image: contactData.image || ''
             });
         }
 

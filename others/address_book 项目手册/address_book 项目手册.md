@@ -279,11 +279,15 @@ int main(void)
 
 
 
-更换 minio 地址 sql
+安装库文件
 
-```sql
-UPDATE contacts 
-SET image = REPLACE(image, '10.11.17.141', '192.168.2.7')
+```shell
+sudo apt install libmysqlclient-dev -y # mysql 库文件
+sudo apt-get install libjansson-dev -y  # json 库文件
+sudo apt-get install libmicrohttpd-dev -y  # http 库文件
+sudo apt-get install libcurl4-openssl-dev -y  # curl 库文件
+
+sudo apt install curl  # curl命令, 调试用
 ```
 
 
@@ -299,43 +303,75 @@ clean :
 
 
 
-# 二.  C 和 Vue 前后端交互
-
-```shell
-sudo apt install libmysqlclient-dev -y # mysql 库文件
-sudo apt-get install libjansson-dev -y  # json 库文件
-sudo apt-get install libmicrohttpd-dev -y  # http 库文件
-sudo apt-get install libcurl4-openssl-dev -y  # curl 库文件
-
-sudo apt install curl  # curl命令, 调试用
-```
-
-
+更换 minio 地址 sql
 
 ```sql
-# 创建联系人表
-create table contacts(
-	id int primary key auto_increment,
-	name varchar(20) not NULL,
-	telephone varchar(12) not NULL,
-	email varchar(50),
-	initial char(1) not NULL,
-	imgae varchar(255),
-	del int not NULL,
-	created_at timestamp default CURRENT_TIMESTAMP,
-  updated_at timestamp default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-	index idx_name (name),
-	index idx_telephone (telephone)
-);
+UPDATE contacts 
+SET image = REPLACE(image, '10.11.17.141', '192.168.2.7')
 ```
 
 
 
+# 二. 其他
+
+### 问题 :
+
+#### 1. 为什么代码中没有使用 minio 的密钥, 图片还能成功上传
+
+因为 桶（Bucket）的访问策略（Access Policy）设置为了 Public（公共）
+
+- Private (私有) : 必须通过签名（携带密钥信息）的请求才能上传或下载
+- Public (公共)：任何人都可以直接通过 URL 下载，也可以通过简单的 PUT 请求上传
+- Custom (自定义)：比如只允许某个 IP 段上传。
 
 
-# 三.  Nginx 反向代理
+
+#### 2. 链表在项目中有什么用
+
+[1] 链表实际充当了数据库的查询的存缓
+
+- 减少磁盘 I/O : 数据库存放在磁盘上, 每次前端刷新页面你都去查一遍数据库，服务器压力会很大
+- 极致响应速度 : 链表直接存在于内存中。在 handle_get_all_contacts 时，程序直接遍历内存里的链表并转 JSON，速度比查询数据库快几个数量级
+
+[2] 当新增、修改或删除联系人时，会同时操作数据库和链表
+
+- 数据库负责持久化（保证断电后数据不丢）
+- 链表负责业务显示, 这样可以确保在不重启服务器的情况下，内存里的数据始终是最新的
+
+[3] 方便进行内存中排序或过滤
+虽然 SQL 也能排序，但在内存里操作链表更灵活。如果实现按首字母 A-Z 分组显示，直接遍历一遍链表并在内存里处理，比写复杂的 SQL 语句并频繁请求数据库要高效得多
+
+
+
+### 目前已做到 :
+
+- MHD 网络层：处理 HTTP 协议。
+
+- MySQL 持久层：管理磁盘数据。
+
+- 内存缓存层：双向循环链表加速。
+
+- MinIO 云存储：Base64 图片解析与上传。
+
+- 内存安全：动态 JSON 拼接与 realloc 处理。
+- iconv 编码转换 : 实现 utf-8 转 gbk, 从而获取名字拼音首字母
+
+
+
+### 待优化 :
+
+- 防止 sql 注入风险
+- 用 cJSON 集成解析 json
+- 多线程, 高并发, 连接池
+- 实现真能打电话☎️
+
+
+
+# ~~三.  Nginx 反向代理~~
 
 让项目实现跨局域网
+
+
 
 #### 安装 Nginx
 
@@ -384,9 +420,6 @@ sudo systemctl status nginx
 
 
 ```shell
-
-
-
 # 3. 测试配置
 sudo nginx -t
 ```

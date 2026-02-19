@@ -85,7 +85,7 @@ async function fetchContacts() {
         contacts.value = list.map(c => ({
             id: c.id,
             name: c.name,
-            telephone: c.phone || c.telephone || '',
+            telephone: c.telephone || '',
             initial: c.initial || (c.name ? c.name[0].toUpperCase() : '#'),
             image: c.image || '',
             email: c.email || ''
