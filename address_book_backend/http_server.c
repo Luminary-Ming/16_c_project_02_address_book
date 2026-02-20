@@ -133,7 +133,6 @@ static int collect_post_data(struct MHD_Connection *connection, const char *uplo
 	return MHD_YES;  // 所有数据接收完毕 (upload_data_size == 0)
 }
 
-
 // 处理 OPTIONS 请求（CORS预检, 当浏览器发送跨域请求时，会先发送一个 OPTIONS 请求来检查服务器是否允许）
 static int handle_options(struct MHD_Connection *connection)
 {
@@ -271,6 +270,55 @@ static int handle_save_contact(struct MHD_Connection *connection, RequestContext
 	free(resp_json);
 	free(contact);
 	free(json_data);
+	return ret;
+}
+
+// 通过系统命令调用 ADB 驱动手机拨号
+static int handle_call(struct MHD_Connection *connection, RequestContext *req_context)
+{
+	// 确保字符串以空字符结尾，防止 strstr 等函数越界访问内存
+	req_context->post_data[req_context->data_size] = '\0';
+
+	char *tel = NULL;
+	char *tel_str = strstr(req_context->post_data, "\"telephone\":");
+	if (tel_str)
+	{
+		tel_str += strlen("\"telephone\":");
+		tel_str++;
+		char *tel_end = strchr(tel_str, '"');
+		if (tel_end)
+		{
+			size_t len = tel_end - tel_str;
+			tel = my_strndup(tel_str, len);
+		}
+	}
+
+	int command_len = snprintf(NULL, 0, "adb shell am start -a android.intent.action.CALL -d tel:%s", tel);
+	char *command = malloc(command_len + 1);
+	if (!command)
+	{
+		LOG_ERR("malloc failed");
+		char *resp_json = json_response_no_data(CALL_FAILED, "拨打失败");
+		int ret = send_json_response(connection, MHD_HTTP_INTERNAL_SERVER_ERROR, resp_json);
+		free(resp_json);
+		free(tel);
+		return ret;
+	}
+
+	// 构造指令：am start 命令用于唤起安卓系统的 Activity
+	// -a android.intent.action.CALL 是直接拨号的意图
+	// -d tel:%s 传入电话号码
+	snprintf(command, command_len + 1, "adb shell am start -a android.intent.action.CALL -d tel:%s", tel);
+
+	LOG_INFO("执行拨打命令: %s", command);
+
+	// 调用 system 函数运行该命令
+	system(command);
+
+	char *resp_json = json_response_no_data(HTTP_OK, "拨打成功");
+	int ret = send_json_response(connection, MHD_HTTP_OK, resp_json);
+	free(resp_json);
+	free(tel);
 	return ret;
 }
 
@@ -474,6 +522,10 @@ static enum MHD_Result handle_request(void *cls, struct MHD_Connection *connecti
 		// 联系人接口 (POST 和 PUT)
 		if (strcmp(url, "/api/contacts") == 0)
 			return handle_save_contact(connection, (RequestContext *)*con_cls, strcmp(method, "PUT") == 0);
+
+		// 打电话接口
+		if (strcmp(url, "/api/contacts/call") == 0)
+			return handle_call(connection, (RequestContext *)*con_cls);
 	}
 
 	// 联系人接口 GET 和 DELETE

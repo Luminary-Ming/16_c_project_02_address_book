@@ -33,4 +33,11 @@ export const contactApi = {
             method: "delete",
         });
     },
+    callContact(payload) {
+        return request({
+            url: `/contacts/call`,
+            method: "post",
+            data: payload,
+        });
+    },
 };

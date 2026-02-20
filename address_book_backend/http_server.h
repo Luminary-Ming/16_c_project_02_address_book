@@ -19,6 +19,7 @@ enum http_error
 	ERROR_SYSTEM = -11,
 	CONTACT_NOT_FOUND = -12,
 	CONVERT_FAILED = -13,
+	CALL_FAILED = -14,
 };
 
 typedef struct http  // HTTP服务器结构
