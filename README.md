@@ -11,6 +11,9 @@
 - 设计日志模块（LOG_INFO/LOG_ERR），支持线程 ID、时间戳、文件名行号等调试信息输出，便于问题定位。
 - 处理 SIGINT/SIGTERM 信号，实现服务优雅退出，主线程同步等待信号，避免子线程资源未释放问题。
 
+<img width="2552" height="1268" alt="通讯录项目" src="https://github.com/user-attachments/assets/388f249b-9d36-4d17-a88f-6a9663aa38ac" />
+
+
 
 ### 问题 :
 
